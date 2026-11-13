@@ -13,7 +13,7 @@ I use the Artificial Lunar Landscape Dataset (Pessia, 2019), available on Kaggle
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install ultralytics opencv-python matplotlib
+pip install -r requirements.txt
 ```
 
 ## Usage
@@ -35,7 +35,6 @@ notebooks/    training notebook
 results/      experiment log and figures
 docs/         project page
 space/        demo application
-report/       course report source
 ```
 
 The `data/` and `runs/` folders are excluded from version control.
