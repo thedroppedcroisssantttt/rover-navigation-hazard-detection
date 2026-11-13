@@ -1,0 +1,7 @@
+# lunar hazard rocks, made by scripts/splitData.py
+# no path: key, so paths resolve next to this file (mac and colab)
+train: data/train.txt
+val: data/val.txt
+test: data/test.txt
+names:
+  0: largeRock
