@@ -1,0 +1,7 @@
+key,name,seed,val_map50,real_map50,real_map5095,ms
+baseline,Baseline (no augmentation),0,0.8136,0.4612,0.2463,5.59
+contrast,Contrast and exposure,0,0.8124,0.3531,0.1893,5.36
+blur,Gaussian blur,0,0.8216,0.5391,0.2973,5.69
+noise,Sensor noise,0,0.8138,0.4584,0.2292,5.95
+lighting,Directional lighting,0,0.8112,0.4615,0.2421,6.38
+all,All combined,0,0.8151,0.5018,0.2777,5.72
