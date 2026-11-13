@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+title: "Hazard Rock Detection for Rovers Using Synthetic Training Data"
+authors:
+  - family-names: "Zentner"
+    given-names: "Sky"
+date-released: 2026-11-13
+url: "https://thedroppedcroisssantttt.github.io/rover-navigation-hazard-detection"
+repository-code: "https://github.com/thedroppedcroisssantttt/rover-navigation-hazard-detection"
+type: software

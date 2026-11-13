@@ -1,0 +1,4 @@
+ultralytics>=8.4
+gradio>=4.0
+spaces
+opencv-python-headless

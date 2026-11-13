@@ -32,16 +32,22 @@ def loadRuns(csvPath, order):
 
 
 def findComparisons(imgDir, captions):
-    # pair <name>_left.* with <name>_right.* for the slider
+    # pair <name>_left.* with <name>_right.* for the slider, ordered and titled by captions.json when present
     pairs = []
     for left in sorted(imgDir.glob("*_left.*")):
         stem = left.name.rsplit("_left", 1)[0]
         right = next(imgDir.glob(f"{stem}_right.*"), None)
         if right is None:
             continue
-        pairs.append({"title": stem, "before": f"img/{left.name}",
-                      "after": f"img/{right.name}", "caption": captions.get(stem, "")})
-    return pairs
+        info = captions.get(stem, {})
+        if isinstance(info, str):
+            info = {"caption": info}
+        pairs.append((stem, {"title": info.get("title", stem), "before": f"img/{left.name}",
+                             "after": f"img/{right.name}", "caption": info.get("caption", "")}))
+    # captions.json order wins, anything unlisted goes last
+    order = list(captions)
+    pairs.sort(key=lambda p: order.index(p[0]) if p[0] in order else len(order))
+    return [pair for _, pair in pairs]
 
 
 def main():

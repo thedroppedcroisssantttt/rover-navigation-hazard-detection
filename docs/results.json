@@ -1,0 +1,79 @@
+{
+  "placeholder": false,
+  "n_synthetic": 9766,
+  "seeds": 1,
+  "runs": [
+    {
+      "key": "baseline",
+      "name": "Baseline (no augmentation)",
+      "val_map50": 0.8136,
+      "real_map50": 0.4612,
+      "real_map5095": 0.2463,
+      "ms": 5.59
+    },
+    {
+      "key": "contrast",
+      "name": "Contrast and exposure",
+      "val_map50": 0.8124,
+      "real_map50": 0.3531,
+      "real_map5095": 0.1893,
+      "ms": 5.36
+    },
+    {
+      "key": "blur",
+      "name": "Gaussian blur",
+      "val_map50": 0.8216,
+      "real_map50": 0.5391,
+      "real_map5095": 0.2973,
+      "ms": 5.69
+    },
+    {
+      "key": "noise",
+      "name": "Sensor noise",
+      "val_map50": 0.8138,
+      "real_map50": 0.4584,
+      "real_map5095": 0.2292,
+      "ms": 5.95
+    },
+    {
+      "key": "lighting",
+      "name": "Directional lighting",
+      "val_map50": 0.8112,
+      "real_map50": 0.4615,
+      "real_map5095": 0.2421,
+      "ms": 6.38
+    },
+    {
+      "key": "all",
+      "name": "All combined",
+      "val_map50": 0.8151,
+      "real_map50": 0.5018,
+      "real_map5095": 0.2777,
+      "ms": 5.72
+    }
+  ],
+  "comparisons": [
+    {
+      "title": "Photo 1",
+      "before": "img/PCAM1_left.jpg",
+      "after": "img/PCAM1_right.jpg",
+      "caption": "Of 6 labeled large rocks, the baseline finds 3 and the blur model finds 5. Neither model raises a false alarm."
+    },
+    {
+      "title": "Photo 2",
+      "before": "img/TCAM4_left.jpg",
+      "after": "img/TCAM4_right.jpg",
+      "caption": "Of 6 labeled large rocks, the baseline finds 3 with one false alarm. The blur model finds 4 with none."
+    },
+    {
+      "title": "Failure case",
+      "before": "img/PCAM13_left.jpg",
+      "after": "img/PCAM13_right.jpg",
+      "caption": "Of 4 labeled large rocks, all in a cluster cut off by the top edge of the frame, the baseline finds 2 and the blur model finds only 1. The blur model's second box spans two rocks at once, so it counts as a false alarm."
+    }
+  ],
+  "sides": {
+    "left": "Baseline",
+    "right": "Gaussian blur"
+  }
+}

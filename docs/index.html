@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hazard Rock Detection for Lunar Rovers Using Synthetic Training Data</title>
+<meta name="description" content="Training a YOLOv8 hazard-rock detector on rendered lunar scenes and measuring which augmentations best close the gap to real lunar photographs.">
+<style>
+  :root {
+    --paper: #fbfaf7;
+    --ink: #1c1b19;
+    --soft: #5e5b55;
+    --rule: #d9d5cc;
+    --link: #111214;
+    --night: #111214;
+    --horizon: #262624;
+    --dust: #8f8c84;
+    --star: #ecebe6;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Times New Roman", Times, "Liberation Serif", "Nimbus Roman", serif;
+    font-size: 18px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--link); text-underline-offset: 2px; text-decoration-thickness: 1px; text-decoration-color: #8f8c84; }
+  a:hover { text-decoration-color: var(--link); }
+  a:hover { text-decoration-thickness: 2px; }
+  .page { max-width: 760px; margin: 0 auto; padding: 56px 24px 96px; }
+  .wide { max-width: 960px; margin-left: auto; margin-right: auto; }
+
+  /* ---------- Title block: artemis ii earthset photo ---------- */
+  header.band {
+    position: relative; overflow: hidden;
+    background: #000 url("img/earthset.jpg") center 8% / cover no-repeat;
+    color: #ecebe6;
+    text-align: center;
+    padding: 190px 24px 142px;
+  }
+  header.band::before { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 45% at 50% 58%, #00000080, #00000000 75%); pointer-events: none; }
+  header.band .inner { text-shadow: 0 1px 3px #000c, 0 0 18px #0008; }
+  header.band .inner { position: relative; max-width: 760px; margin: 0 auto; }
+  header.band a { color: #ecebe6; text-decoration-color: #ecebe666; }
+  header.band a:hover { text-decoration-color: #ecebe6; }
+  header.band .links .sep { color: #8f8c84; }
+  header.band .credit { position: absolute; right: 12px; bottom: 8px; margin: 0; font-size: 12px; color: #a4a29b; }
+  h1 {
+    font-size: clamp(30px, 4.6vw, 42px);
+    line-height: 1.18; font-weight: 700;
+    margin: 0 auto 22px; letter-spacing: -0.01em; max-width: 24ch; text-wrap: balance;
+  }
+  .links { margin: 22px 0 0; font-size: 16px; }
+  .links a { margin: 0 2px; }
+  .links .sep { color: var(--rule); margin: 0 8px; }
+
+  /* ---------- Body text ---------- */
+  h2 { font-size: 25px; font-weight: 700; margin: 64px 0 14px; line-height: 1.3; scroll-margin-top: 24px; }
+  h3 { font-size: 19px; font-weight: 700; margin: 36px 0 8px; }
+  p { margin: 0 0 18px; }
+  .abstract { font-size: 17px; padding: 0; }
+  .abstract strong { font-variant: small-caps; letter-spacing: .03em; font-size: 18px; }
+  .note { font-style: italic; color: var(--soft); font-size: 16px; }
+  ol, ul { padding-left: 1.4em; margin: 0 0 18px; }
+  li { margin-bottom: 8px; }
+  code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; }
+
+  /* ---------- Tables (booktabs style) ---------- */
+  .table-scroll { overflow-x: auto; margin: 8px 0 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15.5px; font-variant-numeric: tabular-nums lining-nums; }
+  thead th { background: var(--night); color: var(--star); font-weight: 600; border: 1px solid var(--night); }
+  tbody td { border: 1px solid #c9c5bb; }
+  th, td { padding: 8px 12px; text-align: right; vertical-align: top; }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-weight: 600; white-space: nowrap; }
+  #results-body td:first-child { white-space: nowrap; }
+  td.who { color: var(--soft); white-space: nowrap; }
+  table.steps td, table.steps th { text-align: left; }
+  table.steps td:first-child { white-space: nowrap; }
+  tr.best td { font-weight: 700; background: #ecebe6; }
+
+  /* ---------- Figures ---------- */
+  figure { margin: 36px 0; }
+  figcaption { font-size: 15.5px; color: var(--soft); margin-top: 10px; line-height: 1.5; }
+  figcaption b { color: var(--ink); }
+
+  /* bar chart: plain, no container */
+  .bars { font-size: 15px; --labelW: 190px; }
+  .plot { position: relative; margin-left: var(--labelW); margin-right: 18px; border-left: 1px solid var(--horizon); border-bottom: 1px solid var(--horizon); padding: 6px 0; }
+  .grid { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--rule); }
+  .bar-row { position: relative; height: 30px; display: flex; align-items: center; }
+  .bar-label { position: absolute; right: calc(100% + 12px); width: calc(var(--labelW) - 12px); text-align: right; line-height: 1.15; }
+  .bar-fill { position: relative; height: 18px; width: 0; background: var(--dust); transition: width .7s ease-out; }
+  .bar-row.best .bar-fill { background: var(--night); }
+  .bar-val { margin-left: 8px; font-variant-numeric: tabular-nums; color: var(--soft); }
+  .bar-row.best .bar-val { color: var(--ink); font-weight: 700; }
+  .ticks { position: relative; margin-left: var(--labelW); margin-right: 18px; height: 22px; font-size: 13px; color: var(--soft); }
+  .ticks span { position: absolute; top: 4px; transform: translateX(-50%); }
+  .ticks span::before { content: ""; position: absolute; left: 50%; top: -9px; height: 5px; border-left: 1px solid var(--horizon); }
+  .axis-title { margin-left: var(--labelW); margin-right: 18px; text-align: center; font-size: 14px; color: var(--soft); margin-top: 2px; }
+  @media (max-width: 560px) { .bars { --labelW: 118px; font-size: 13px; } .bar-row { height: 36px; } }
+
+  /* before/after slider */
+  .gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .gallery img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; display: block; background: #000; }
+  .gallery .rowLabel { grid-column: 1 / -1; font-size: 14px; color: var(--soft); margin: 10px 0 0; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .pair img { width: 100%; display: block; }
+  .pair span { display: block; font-size: 13px; color: var(--soft); margin-top: 4px; }
+  @media (max-width: 560px) { .gallery { grid-template-columns: 1fr 1fr; } }
+  .compare {
+    position: relative; width: 100%; aspect-ratio: 16 / 10; overflow: hidden;
+    background: #ddd; user-select: none; touch-action: pan-y; cursor: ew-resize;
+  }
+  .compare img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+  .compare .after { clip-path: inset(0 0 0 50%); }
+  .compare .handle { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px #0004; cursor: ew-resize; }
+  .compare .handle::after {
+    content: "\2039\00a0\203A"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 40px; height: 40px; border-radius: 50%; background: #fff; color: #111214; box-shadow: 0 1px 6px #0006;
+    display: flex; align-items: center; justify-content: center; font-size: 20px; line-height: 1; font-weight: 700;
+    transition: transform .15s ease;
+  }
+  .compare:hover .handle::after, .compare.dragging .handle::after { transform: translate(-50%, -50%) scale(1.12); }
+  .compare .handle:focus { outline: none; }
+  .compare .handle:focus-visible::after { box-shadow: 0 0 0 3px var(--link), 0 1px 6px #0006; }
+  .compare.animating .after, .compare.animating .handle { transition: clip-path .5s ease, left .5s ease; }
+  .compare .side { position: absolute; bottom: 10px; font-size: 13px; color: #fff; background: #000a; padding: 2px 8px; border-radius: 3px; pointer-events: none; }
+  .compare .side.l { left: 10px; } .compare .side.r { right: 10px; }
+  .compare .hint { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); font-size: 13px; color: #fff; background: #000b; padding: 4px 12px; border-radius: 14px; pointer-events: none; transition: opacity .4s ease; white-space: nowrap; }
+  .compare .hint.gone { opacity: 0; }
+  .picker { font-size: 15.5px; margin-bottom: 10px; color: var(--soft); }
+  .picker button {
+    font: inherit; background: none; border: 0; padding: 0; margin: 0 4px; cursor: pointer;
+    color: var(--link); text-decoration: underline; text-underline-offset: 2px;
+  }
+  .picker button.on { color: var(--ink); text-decoration: none; font-weight: 700; cursor: default; }
+
+  /* demo */
+  .demo-frame { width: 100%; height: 760px; border: 1px solid var(--rule); background: #fff; }
+
+  /* references */
+  .refs p { padding-left: 2em; text-indent: -2em; font-size: 16px; margin-bottom: 10px; }
+  .cite { position: relative; }
+  .cite pre { background: #f1efe9; border: 1px solid var(--rule); padding: 14px 16px; overflow-x: auto; font-size: 13.5px; line-height: 1.5; margin: 0; }
+  .cite .copy { position: absolute; top: 8px; right: 8px; font: 13px "Times New Roman", Times, serif; padding: 3px 10px; border: 1px solid var(--rule); background: #fff; color: var(--ink); cursor: pointer; }
+  .cite .copy:hover { border-color: var(--ink); }
+  footer { margin-top: 64px; padding-top: 18px; border-top: 1px solid var(--rule); font-size: 15px; color: var(--soft); }
+</style>
+</head>
+<body>
+<header class="band">
+  <div class="inner">
+  <h1>Hazard Rock Detection for Lunar Rovers Using Synthetic Training Data</h1>
+  <p class="links">
+    <span id="paperLink"><a href="report.pdf">Paper</a><span class="sep">|</span></span><a id="link-code" href="#">Code</a><span class="sep">|</span><a href="#demo">Demo</a><span class="sep">|</span><a href="https://www.kaggle.com/datasets/romainpessia/artificial-lunar-rocky-landscape-dataset">Dataset</a>
+  </p>
+</div>
+  <p class="credit">Image: NASA, Artemis II crew, April 6, 2026</p>
+</header>
+
+<div class="page">
+
+<div class="abstract">
+  <p>
+    <strong>Abstract.</strong>
+    Autonomous rovers need to recognize large rocks that could damage their wheels, but labeled images of the real
+    lunar surface are scarce, so detectors are usually trained on rendered scenes. We fine-tune YOLOv8 on 8,049
+    rendered scenes from the Artificial Lunar Landscape Dataset and evaluate it on 36 held-out real lunar photographs.
+    Trained on renders alone, the model reaches <span data-key="baseline_real_map50">—</span> mAP@0.5 on real photos.
+    We then test four augmentations meant to make renders look more like real photos.<span id="bestSentence"> The best configuration
+    (<span data-key="best_name">—</span>) reaches <span data-key="best_real_map50">—</span> mAP@0.5, at
+    <span data-key="best_speed_ms">—</span> ms per image.</span>
+  </p>
+</div>
+
+<h2 id="problem">1. Problem</h2>
+<p>
+  NASA's Curiosity rover damaged its wheels soon after landing on Mars in 2012, which limited where it could drive.
+  Rovers sent to the Moon and beyond will face similar terrain, and the communication delay with Earth means they
+  can't wait for an operator to flag every hazard. They need to spot large, sharp rocks in their own camera images,
+  even though lunar scenes combine harsh sunlight, deep shadow and almost no color variation.
+</p>
+<p>
+  Training such a detector requires labeled images. Real labeled lunar images are hard to come by, so models are
+  usually trained on rendered scenes instead, and lose accuracy when they meet real photographs. We measure how large
+  that loss is and test which augmentations reduce it.
+</p>
+
+<h2 id="method">2. Method</h2>
+<p>
+  We use YOLOv8 from the Ultralytics library, fine-tuned from COCO-pretrained weights. Model size, number of epochs,
+  image size and random seed are held fixed across every run, so the augmentation is the only thing that changes.
+  Table 1 lists each stage of the pipeline and who wrote it.
+</p>
+
+<div class="table-scroll">
+<table class="steps">
+  <thead><tr><th>Stage</th><th>What it does</th><th>Code</th></tr></thead>
+  <tbody>
+    <tr><td>Label conversion</td><td>Converts the dataset's bounding boxes to normalized YOLO format</td><td class="who">ours</td></tr>
+    <tr><td>Data split</td><td>Splits renders into training and validation sets; all real photos are held out for testing</td><td class="who">ours</td></tr>
+    <tr><td>Augmentation</td><td>Applies the transformations described below to the rendered images</td><td class="who">ours</td></tr>
+    <tr><td>Training</td><td>YOLOv8 architecture and training loop</td><td class="who">Ultralytics</td></tr>
+    <tr><td>Evaluation</td><td>mAP@0.5, mAP@0.5:0.95 and inference time on the real test photos</td><td class="who">ours</td></tr>
+    <tr><td>Visualization</td><td>Tables, charts and detection comparisons</td><td class="who">ours</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="note" style="font-style:normal">Table 1. Pipeline stages.</p>
+
+<h3>Data</h3>
+<p>
+  Training uses only rendered scenes from the Artificial Lunar Landscape Dataset. The 36 real lunar photographs are
+  held out for testing and never seen during training. Figure 1 shows a few examples of each. The renders are sharp
+  and free of noise, while the real photographs are softer and have a brown tint.
+</p>
+<figure>
+  <div class="gallery">
+    <p class="rowLabel">Rendered training images</p>
+    <img src="img/train_render1691.jpg" alt="Rendered lunar scene with labeled rocks" loading="lazy">
+    <img src="img/train_render5077.jpg" alt="Rendered lunar scene with a large boulder" loading="lazy">
+    <img src="img/train_render6787.jpg" alt="Rendered lunar slope with labeled rocks" loading="lazy">
+    <p class="rowLabel">Real test photographs</p>
+    <img src="img/real_PCAM5.jpg" alt="Real lunar photo with labeled rocks" loading="lazy">
+    <img src="img/real_TCAM16.jpg" alt="Real lunar photo near the horizon" loading="lazy">
+    <img src="img/real_TCAM9.jpg" alt="Real lunar photo with rover tracks" loading="lazy">
+  </div>
+  <figcaption><b>Figure 1.</b> Rendered training images (top) and real test photographs (bottom). Labeled large rocks are outlined in amber.</figcaption>
+</figure>
+
+<h3>Augmentations</h3>
+<p>Each augmentation is tested alone and in combination with the others:</p>
+<ul>
+  <li><em>Contrast and exposure shifts</em> imitate the very high dynamic range of sunlit lunar terrain.</li>
+  <li><em>Gaussian blur</em> imitates optical softness and slight motion blur from a real camera.</li>
+  <li><em>Sensor noise</em> adds the grain that rendered images lack.</li>
+  <li><em>Directional lighting</em> adds gradients and shadows from a low sun angle.</li>
+</ul>
+
+<h2 id="results">3. Results</h2>
+<p>
+  All models are trained on rendered scenes only and evaluated on the same held-out real photographs. The gap column is
+  real-photo mAP@0.5 minus validation mAP@0.5 on renders; values closer to zero mean the model transfers better.
+</p>
+
+<div class="table-scroll">
+<table>
+  <thead>
+    <tr>
+      <th>Configuration</th>
+      <th>Val AP50</th>
+      <th>Real AP50</th>
+      <th>Real AP50:95</th>
+      <th>Gap</th>
+      <th>ms</th>
+    </tr>
+  </thead>
+  <tbody id="results-body"></tbody>
+</table>
+</div>
+<p class="note" style="font-style:normal">Table 2. Detection results. AP50 is mAP at IoU 0.5; AP50:95 is mAP averaged over IoU 0.5 to 0.95; ms is inference time per image. The best configuration on real photos is shaded.<span id="seed-note"></span></p>
+
+<figure>
+  <div class="bars" id="bars"></div>
+  <figcaption><b>Figure 2.</b> Real-photo mAP@0.5 for each configuration. The darkest bar is the best configuration.</figcaption>
+</figure>
+
+<figure id="compare-fig">
+  <div class="picker" id="picker"></div>
+  <div class="compare" id="cmp-box">
+    <img class="before" id="cmp-before" alt="Baseline detections">
+    <img class="after" id="cmp-after" alt="Augmented model detections">
+    <span class="side l" id="sideLeft">Baseline</span>
+    <span class="side r" id="sideRight">Augmented</span>
+    <span class="hint" id="cmp-hint">Drag or click to compare</span>
+    <div class="handle" id="cmp-handle" role="slider" tabindex="0" aria-label="Comparison slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"></div>
+  </div>
+  <figcaption><b>Figure 3.</b> Real lunar photographs. Drag the handle, or click anywhere on the image, to compare
+  <span id="capLeft">the baseline</span> (left) with <span id="capRight">the best augmented model</span> (right).
+  <span id="cmp-caption"></span></figcaption>
+</figure>
+
+<figure>
+  <div class="pair">
+    <div><img src="img/failure_labels.jpg" alt="Failure case photo with labeled rocks outlined" loading="lazy"><span>Labeled large rocks</span></div>
+    <div><img src="img/failure_blur.jpg" alt="Failure case photo with blur model detections" loading="lazy"><span>Blur model detections</span></div>
+  </div>
+  <figcaption><b>Figure 4.</b> Failure case. All four labeled rocks sit in a cluster cut off by the top edge of the frame.
+  The blur model finds only one of them, and its second box spans two rocks at once, so it counts as a false alarm.</figcaption>
+</figure>
+
+<h2 id="demo">4. Demo</h2>
+<p>
+  You can try the trained model on your own lunar or Mars terrain images below. It runs on a free Hugging Face Space,
+  so the first request after a quiet period can take about 30 seconds.
+</p>
+<div id="demo-slot"></div>
+
+<h2 id="citation">Citation</h2>
+<p>If you use this work, please cite it as:</p>
+<div class="cite">
+  <button class="copy" data-target="bibtex" type="button">Copy</button>
+  <pre id="bibtex">@misc{zentner2026roverhazard,
+  title  = {Hazard Rock Detection for Rovers Using Synthetic Training Data},
+  author = {Zentner, Sky},
+  year   = {2026},
+  url    = {https://github.com/thedroppedcroisssantttt/rover-navigation-hazard-detection},
+  note   = {Project page: https://thedroppedcroisssantttt.github.io/rover-navigation-hazard-detection}
+}</pre>
+</div>
+<p class="note" style="font-style:normal; margin-top:14px">APA:</p>
+<div class="cite">
+  <button class="copy" data-target="apa" type="button">Copy</button>
+  <pre id="apa" style="white-space:pre-wrap">Zentner, S. (2026). <em>Hazard rock detection for rovers using synthetic training data</em> [Computer software]. GitHub. https://github.com/thedroppedcroisssantttt/rover-navigation-hazard-detection</pre>
+</div>
+
+<h2>References</h2>
+<div class="refs">
+  <p>Jocher, G., Chaurasia, A., &amp; Qiu, J. (2023). <em>Ultralytics YOLOv8</em> (Version 8.0.0) [Computer software]. <a href="https://github.com/ultralytics/ultralytics">https://github.com/ultralytics/ultralytics</a></p>
+  <p>Pessia, R. (2019). <em>Artificial lunar landscape dataset</em> [Data set]. Kaggle. <a href="https://www.kaggle.com/datasets/romainpessia/artificial-lunar-rocky-landscape-dataset">https://www.kaggle.com/datasets/romainpessia/artificial-lunar-rocky-landscape-dataset</a></p>
+</div>
+<p class="note" style="font-size:14.5px;margin-top:20px">
+  Portions of this work were developed with the assistance of generative AI tools. The authors reviewed all outputs and take full responsibility for the content.
+</p>
+
+
+</div>
+
+<script>
+/* Set these two once you know the URLs. */
+const GITHUB_REPO_URL = "https://github.com/thedroppedcroisssantttt/rover-navigation-hazard-detection";
+const HF_SPACE_URL    = "https://thedroppedcroissant-rover-navigation-hazard-detection.hf.space"; // the *.hf.space address
+const HF_SPACE_PAGE   = "https://huggingface.co/spaces/thedroppedcroissant/rover-navigation-hazard-detection";
+
+document.getElementById("link-code").href = GITHUB_REPO_URL;
+
+// hide the paper link until docs/report.pdf exists
+fetch("report.pdf", { method: "HEAD" }).then(r => { if (!r.ok) document.getElementById("paperLink").hidden = true; })
+  .catch(() => { document.getElementById("paperLink").hidden = true; });
+
+/* ---------- Citation copy buttons ---------- */
+document.querySelectorAll(".cite .copy").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    const text = document.getElementById(btn.dataset.target).innerText;
+    try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; }
+    catch (e) {
+      // fallback: select the text so ctrl/cmd+c works
+      const r = document.createRange(); r.selectNodeContents(document.getElementById(btn.dataset.target));
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); btn.textContent = "Selected";
+    }
+    setTimeout(() => btn.textContent = "Copy", 1500);
+  });
+});
+
+/* ---------- Demo embed ---------- */
+(function () {
+  const slot = document.getElementById("demo-slot");
+  if (HF_SPACE_URL.includes("YOUR-HF-USERNAME")) {
+    slot.innerHTML = '<p class="note">The demo will appear here once <code>HF_SPACE_URL</code> is set in <code>docs/index.html</code>.</p>';
+  } else {
+    // link as well as the embed, in case the frame is blocked or slow to wake
+    slot.innerHTML = '<iframe class="demo-frame" src="' + HF_SPACE_URL + '" title="Hazard rock detector demo" loading="lazy"></iframe>' +
+      '<p class="note" style="font-style:normal">If the demo does not load here, <a href="' + HF_SPACE_PAGE + '">open it on Hugging Face</a>.</p>';
+  }
+})();
+
+/* ---------- Placeholder image for the slider, used until real outputs exist ---------- */
+function placeholderSVG(detectAll, variant) {
+  const rocks = [[180,330,60],[420,380,90],[640,300,45],[770,410,70],[300,440,40]];
+  const shift = variant * 37;
+  let s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600">' +
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a4946"/><stop offset="1" stop-color="#232321"/></linearGradient></defs>' +
+    '<rect width="960" height="600" fill="url(#g)"/><rect width="960" height="200" fill="#060606"/>';
+  rocks.forEach(([x, y, r], i) => {
+    const cx = (x + shift * (i % 2 ? 1 : -1) + 960) % 960;
+    s += '<ellipse cx="' + cx + '" cy="' + y + '" rx="' + r + '" ry="' + (r * .6) + '" fill="#7d7a73"/>' +
+         '<ellipse cx="' + (cx + r * .35) + '" cy="' + (y + r * .25) + '" rx="' + r + '" ry="' + (r * .45) + '" fill="#0b0b0b" opacity=".75"/>';
+    if (detectAll || i % 2 === 0) {
+      s += '<rect x="' + (cx - r - 6) + '" y="' + (y - r * .6 - 6) + '" width="' + (2 * r + 12) + '" height="' + (r * 1.2 + 12) + '" fill="none" stroke="#fff" stroke-width="2"/>';
+    }
+  });
+  s += '<text x="480" y="105" text-anchor="middle" font-family="Times New Roman,Times,serif" font-size="20" fill="#888">placeholder image</text></svg>';
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(s);
+}
+
+/* ---------- Results (from results.json) ---------- */
+const FALLBACK = {
+  placeholder: true, n_synthetic: 9766, seeds: 1,
+  runs: [
+    { name: "Baseline (no augmentation)", key: "baseline", val_map50: 0.91, real_map50: 0.48, real_map5095: 0.27, ms: 6.1 },
+    { name: "Contrast and exposure",      key: "contrast", val_map50: 0.90, real_map50: 0.56, real_map5095: 0.31, ms: 6.1 },
+    { name: "Gaussian blur",              key: "blur",     val_map50: 0.89, real_map50: 0.52, real_map5095: 0.29, ms: 6.1 },
+    { name: "Sensor noise",               key: "noise",    val_map50: 0.90, real_map50: 0.54, real_map5095: 0.30, ms: 6.1 },
+    { name: "Directional lighting",       key: "lighting", val_map50: 0.89, real_map50: 0.58, real_map5095: 0.33, ms: 6.1 },
+    { name: "All combined",               key: "all",      val_map50: 0.88, real_map50: 0.63, real_map5095: 0.36, ms: 6.1 }
+  ],
+  comparisons: [
+    { title: "Photo 1", before: "", after: "", caption: "" },
+    { title: "Photo 2", before: "", after: "", caption: "" },
+    { title: "Failure case", before: "", after: "", caption: "" }
+  ]
+};
+
+const fmt = (x, d = 3) => (x == null || isNaN(x)) ? "—" : Number(x).toFixed(d);
+
+function render(data) {
+
+  const runs = data.runs || [];
+  const best = runs.reduce((a, b) => (!a || b.real_map50 > a.real_map50) ? b : a, null);
+  const base = runs.find(r => r.key === "baseline") || runs[0];
+
+  const set = (k, v) => document.querySelectorAll('[data-key="' + k + '"]').forEach(el => el.textContent = v);
+  if (base) set("baseline_real_map50", fmt(base.real_map50, 2));
+  if (best) {
+    set("best_real_map50", fmt(best.real_map50, 2));
+    set("best_speed_ms", fmt(best.ms, 1));
+    set("best_name", best.name.toLowerCase());
+    // only show the "best configuration" line once an augmented run exists
+    document.getElementById("bestSentence").hidden = (best.key === "baseline");
+  }
+
+  document.getElementById("results-body").innerHTML = runs.map(r => {
+    const gap = r.real_map50 - r.val_map50;
+    return '<tr' + (r === best ? ' class="best"' : '') + '><td>' + r.name + '</td>' +
+      '<td>' + fmt(r.val_map50) + '</td><td>' + fmt(r.real_map50) + '</td><td>' + fmt(r.real_map5095) + '</td>' +
+      '<td>' + (gap >= 0 ? "+" : "−") + fmt(Math.abs(gap)) + '</td><td>' + fmt(r.ms, 1) + '</td></tr>';
+  }).join("");
+
+  if (data.seeds && data.seeds > 1) {
+    document.getElementById("seed-note").textContent = " Values are means over " + data.seeds + " random seeds.";
+  }
+
+  // Figure 1: bars scaled to 0–1 so differences aren't exaggerated
+  const bars = document.getElementById("bars");
+  const tickVals = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
+  // x axis runs 0 to 1, values sit right of each bar
+  const gridHtml = tickVals.slice(1).map(t => '<div class="grid" style="left:' + (t * 100) + '%"></div>').join("");
+  const rowHtml = runs.map(r =>
+    '<div class="bar-row' + (r === best ? ' best' : '') + '">' +
+      '<span class="bar-label">' + r.name + '</span>' +
+      '<div class="bar-fill" data-w="' + (r.real_map50 * 100) + '"></div>' +
+      '<span class="bar-val">' + fmt(r.real_map50, 2) + '</span>' +
+    '</div>').join("");
+  bars.innerHTML =
+    '<div class="plot">' + gridHtml + rowHtml + '</div>' +
+    '<div class="ticks">' + tickVals.map(t => '<span style="left:' + (t * 100) + '%">' + t.toFixed(1) + '</span>').join("") + '</div>' +
+    '<div class="axis-title">mAP@0.5 on real lunar photographs</div>';
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) { bars.querySelectorAll(".bar-fill").forEach(b => b.style.width = b.dataset.w + "%"); io.disconnect(); }
+  }), { threshold: .2 });
+  io.observe(bars);
+
+  // Figure 2: comparison picker
+  const comps = (data.comparisons && data.comparisons.length) ? data.comparisons : FALLBACK.comparisons;
+  // side labels come from makeComparisons.py (ground truth vs model, or model vs model)
+  if (data.sides) {
+    document.getElementById("sideLeft").textContent = data.sides.left;
+    document.getElementById("sideRight").textContent = data.sides.right;
+    document.getElementById("capLeft").textContent = data.sides.left.toLowerCase().startsWith("ground") ? "the labeled large rocks" : data.sides.left.toLowerCase() + " detections";
+    document.getElementById("capRight").textContent = data.sides.right.toLowerCase() + " detections";
+  }
+  const picker = document.getElementById("picker");
+  picker.innerHTML = "Image: " + comps.map((c, i) => '<button data-i="' + i + '">' + c.title + '</button>').join(" · ");
+  const show = i => {
+    const c = comps[i];
+    document.getElementById("cmp-before").src = c.before || placeholderSVG(false, i);
+    document.getElementById("cmp-after").src  = c.after  || placeholderSVG(true, i);
+    document.getElementById("cmp-caption").textContent = c.caption || "";
+    picker.querySelectorAll("button").forEach((b, j) => b.classList.toggle("on", j === i));
+  };
+  picker.addEventListener("click", e => { if (e.target.dataset.i) show(+e.target.dataset.i); });
+  show(0);
+}
+
+fetch("results.json", { cache: "no-store" })
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(render)
+  .catch(() => render(FALLBACK));   // also used when the file is opened directly from disk
+
+/* ---------- Slider interaction ---------- */
+(function () {
+  const box = document.getElementById("cmp-box");
+  const after = document.getElementById("cmp-after");
+  const handle = document.getElementById("cmp-handle");
+  const hint = document.getElementById("cmp-hint");
+  let dragging = false;
+  const setPct = p => {
+    p = Math.max(0, Math.min(100, p));
+    after.style.clipPath = "inset(0 0 0 " + p + "%)";
+    handle.style.left = p + "%";
+    handle.setAttribute("aria-valuenow", Math.round(p));
+  };
+  // hide the hint after the first real interaction
+  const used = () => hint.classList.add("gone");
+  const move = e => { const r = box.getBoundingClientRect(); setPct((e.clientX - r.left) / r.width * 100); };
+  box.addEventListener("pointerdown", e => {
+    dragging = true; used(); box.classList.remove("animating"); box.classList.add("dragging");
+    box.setPointerCapture(e.pointerId); move(e);
+  });
+  box.addEventListener("pointermove", e => { if (dragging) move(e); });
+  const stop = () => { dragging = false; box.classList.remove("dragging"); };
+  box.addEventListener("pointerup", stop);
+  box.addEventListener("pointercancel", stop);
+  handle.addEventListener("keydown", e => {
+    const cur = parseFloat(handle.style.left) || 50;
+    const step = e.shiftKey ? 20 : 5;
+    const keys = { ArrowLeft: cur - step, ArrowRight: cur + step, Home: 0, End: 100 };
+    if (e.key in keys) { used(); setPct(keys[e.key]); e.preventDefault(); }
+  });
+  // reset to the middle when another photo is picked
+  document.getElementById("picker").addEventListener("click", e => { if (e.target.dataset.i) setPct(50); });
+  // one gentle sweep the first time the slider scrolls into view, so it reads as draggable
+  if ("IntersectionObserver" in window && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const io = new IntersectionObserver(entries => {
+      if (!entries[0].isIntersecting) return;
+      io.disconnect();
+      box.classList.add("animating");
+      setTimeout(() => setPct(35), 300);
+      setTimeout(() => setPct(65), 850);
+      setTimeout(() => { setPct(50); setTimeout(() => box.classList.remove("animating"), 550); }, 1400);
+    }, { threshold: 0.6 });
+    io.observe(box);
+  }
+})();
+</script>
+</body>
+</html>

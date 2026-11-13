@@ -1,0 +1,14 @@
+{
+  "PCAM1": {
+    "title": "Photo 1",
+    "caption": "Of 6 labeled large rocks, the baseline finds 3 and the blur model finds 5. Neither model raises a false alarm."
+  },
+  "TCAM4": {
+    "title": "Photo 2",
+    "caption": "Of 6 labeled large rocks, the baseline finds 3 with one false alarm. The blur model finds 4 with none."
+  },
+  "PCAM13": {
+    "title": "Failure case",
+    "caption": "Of 4 labeled large rocks, all in a cluster cut off by the top edge of the frame, the baseline finds 2 and the blur model finds only 1. The blur model's second box spans two rocks at once, so it counts as a false alarm."
+  }
+}
